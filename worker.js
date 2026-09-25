@@ -10,7 +10,7 @@ async function handleLeads(request, env) {
   if (!scriptUrl || !secret) return Response.json({error:"Cloud storage is not configured yet."},{status:500});
   if (request.method==="POST") {
     try { const body=await request.json(); body.secret=secret;
-      const response=await fetch(scriptUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const response=await fetchWithRetry(scriptUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       return normalizeUpstreamResponse(response,"Google Apps Script");
     } catch(error){return Response.json({error:error instanceof Error?error.message:String(error)},{status:500});}
   }
@@ -27,4 +27,25 @@ async function normalizeUpstreamResponse(response,serviceName){
   if(!data) return Response.json({error:serviceName+" returned a non-JSON response. Check the Web App deployment."},{status:502});
   if(data.ok===false) return Response.json({error:data.error||serviceName+" rejected the request."},{status:502});
   return Response.json(data,{status:200});
+}
+
+
+async function fetchWithRetry(url, options) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      if (response.ok || attempt === 1) return response;
+      lastError = new Error("Upstream HTTP " + response.status);
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+      if (attempt === 1) throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw lastError || new Error("Upstream request failed");
 }
