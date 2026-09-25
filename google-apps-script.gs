@@ -37,11 +37,18 @@ function doGet(e) {
   return json({ leads });
 }
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
   try {
     const data = JSON.parse(e.postData.contents || '{}');
     if (!validSecret(data.secret)) return json({ error: 'Unauthorized' });
     if (data.action === 'delete') return deleteLead(data.recordId);
     if (!data.mobile || !data.shopName) return json({ error: 'Mobile and shop name are required.' });
+    const requestId = String(data.requestId || '').trim();
+    if (requestId) {
+      const cached = CacheService.getScriptCache().get('save:' + requestId);
+      if (cached) return json(JSON.parse(cached));
+    }
     const sh = getSheet(); ensurePlaceColumn(sh);
     const rows = sh.getDataRange().getValues();
     const normalizedMobile = normalizeMobile(data.mobile), normalizedShop = normalizeShop(data.shopName);
@@ -55,8 +62,11 @@ function doPost(e) {
     const file = data.cardImage ? saveCardImage(getFolder(), data.cardImage, recordId, data.shopName) : null;
     const customerType = existing ? 'Existing Customer' : 'New Customer';
     sh.appendRow([now,recordId,String(data.mobile).trim(),String(data.shopName).trim(),String(data.place||'').trim(),customerType,(data.interests||[]).join(', '),String(data.notes||''),String(data.priority||'Follow-up'),String(data.followup||'Today'),String(data.source||'Meenakshi Jewels • Exhibition'),file?file.getUrl():'']);
-    return json({ok:true,recordId,existingCustomer:existing,cardFileUrl:file?file.getUrl():'',shopName:String(data.shopName).trim()});
+    const result = {ok:true,recordId,existingCustomer:existing,cardFileUrl:file?file.getUrl():'',shopName:String(data.shopName).trim()};
+    if (requestId) CacheService.getScriptCache().put('save:' + requestId, JSON.stringify(result), 21600);
+    return json(result);
   } catch (err) { return json({ error: err.message || 'Save failed.' }); }
+  finally { lock.releaseLock(); }
 }
 function deleteLead(recordId) {
   if (!recordId) return json({ error: 'Record ID is required.' });
