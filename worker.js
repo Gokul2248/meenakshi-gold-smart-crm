@@ -26,7 +26,7 @@ async function normalizeUpstreamResponse(response,serviceName){
   if(!response.ok){const ct=response.headers.get("content-type")||"";return Response.json({error:(ct.includes("text/html")||/<html|sign in|accounts\.google\.com/i.test(text))?serviceName+" is not publicly accessible. Check the Web App access setting.":serviceName+" returned HTTP "+response.status+"."},{status:502});}
   if(!data) return Response.json({error:serviceName+" returned a non-JSON response. Check the Web App deployment."},{status:502});
   if(data.ok===false) return Response.json({error:data.error||serviceName+" rejected the request."},{status:502});
-  return Response.json(data,{status:200});
+  return new Response(JSON.stringify(data),{status:200,headers:{"Content-Type":"application/json","Cache-Control":"no-store, no-cache, must-revalidate"}});
 }
 
 
