@@ -10,13 +10,13 @@ async function handleLeads(request, env) {
   if (!scriptUrl || !secret) return Response.json({error:"Cloud storage is not configured yet."},{status:500});
   if (request.method==="POST") {
     try { const body=await request.json(); body.secret=secret;
-      const response=await fetchWithRetry(scriptUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const response=await fetchWithRetry(scriptUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},{maxAttempts:1,timeoutMs:45000});
       return normalizeUpstreamResponse(response,"Google Apps Script");
     } catch(error){return Response.json({error:error instanceof Error?error.message:String(error)},{status:500});}
   }
   if(request.method==="GET"){
     if(request.headers.get("x-admin-password")!==env.ADMIN_PASSWORD) return Response.json({error:"Invalid admin password."},{status:401});
-    try { const response=await fetch(scriptUrl+"?action=list&secret="+encodeURIComponent(secret)); return normalizeUpstreamResponse(response,"Google Apps Script");}
+    try { const response=await fetchWithRetry(scriptUrl+"?action=list&secret="+encodeURIComponent(secret),{method:"GET"},{maxAttempts:2,timeoutMs:45000}); return normalizeUpstreamResponse(response,"Google Apps Script");}
     catch(error){return Response.json({error:error instanceof Error?error.message:String(error)},{status:500});}
   }
   return Response.json({error:"Method not allowed"},{status:405});
